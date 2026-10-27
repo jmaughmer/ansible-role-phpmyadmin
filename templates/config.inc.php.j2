@@ -1,0 +1,56 @@
+<?php
+/**
+ * {{ ansible_managed }}
+ */
+declare(strict_types=1);
+{# PHP single-quoted string: only backslash and quote need escaping. #}
+{% macro q(value) -%}
+'{{ value | string | replace('\\', '\\\\') | replace("'", "\\'") }}'
+{%- endmacro %}
+
+$cfg['blowfish_secret'] = {{ q(__phpmyadmin_secret) }};
+
+$i = 0;
+{% for server in phpmyadmin_servers %}
+
+$i++;
+$cfg['Servers'][$i]['verbose'] = {{ q(server.verbose | default(server.host)) }};
+$cfg['Servers'][$i]['host'] = {{ q(server.host) }};
+{% if server.port is defined %}
+$cfg['Servers'][$i]['port'] = {{ q(server.port) }};
+{% endif %}
+{% if server.socket is defined %}
+$cfg['Servers'][$i]['socket'] = {{ q(server.socket) }};
+{% endif %}
+$cfg['Servers'][$i]['auth_type'] = 'cookie';
+$cfg['Servers'][$i]['AllowRoot'] = {{ phpmyadmin_allow_root | bool | lower }};
+$cfg['Servers'][$i]['AllowNoPassword'] = {{ phpmyadmin_allow_no_password | bool | lower }};
+{% if server.ssl | default(false) | bool %}
+$cfg['Servers'][$i]['ssl'] = true;
+{% if server.ssl_ca is defined %}
+$cfg['Servers'][$i]['ssl_ca'] = {{ q(server.ssl_ca) }};
+{% endif %}
+$cfg['Servers'][$i]['ssl_verify'] = {{ server.ssl_verify | default(true) | bool | lower }};
+{% endif %}
+{% if server.hide_db is defined %}
+$cfg['Servers'][$i]['hide_db'] = {{ q(server.hide_db) }};
+{% endif %}
+{% endfor %}
+
+$cfg['UploadDir'] = '{{ __phpmyadmin_state_dir }}/upload';
+$cfg['SaveDir'] = '{{ __phpmyadmin_state_dir }}/save';
+$cfg['TempDir'] = '{{ __phpmyadmin_temp_dir }}';
+
+$cfg['AllowArbitraryServer'] = false;
+$cfg['LoginCookieValidity'] = {{ phpmyadmin_login_cookie_validity | int }};
+$cfg['LoginCookieStore'] = 0;
+$cfg['LoginCookieDeleteAll'] = true;
+$cfg['VersionCheck'] = {{ phpmyadmin_version_check | bool | lower }};
+$cfg['ShowServerInfo'] = {{ phpmyadmin_show_server_info | bool | lower }};
+$cfg['ShowPhpInfo'] = {{ phpmyadmin_show_php_info | bool | lower }};
+$cfg['ShowGitRevision'] = false;
+$cfg['SendErrorReports'] = {{ q(phpmyadmin_send_error_reports) }};
+$cfg['DefaultLang'] = {{ q(phpmyadmin_default_lang) }};
+{% for key, value in phpmyadmin_extra_config | dictsort %}
+$cfg[{{ q(key) }}] = {{ (value | string | lower) if value is boolean else (value if value is number else q(value)) }};
+{% endfor %}

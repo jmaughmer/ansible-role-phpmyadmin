@@ -1,0 +1,20 @@
+---
+__phpmyadmin_supported_major_versions: ["8", "9", "10"]
+__phpmyadmin_repo_sources: [epel, satellite, custom, none]
+
+__phpmyadmin_config_dir: /etc/phpMyAdmin
+__phpmyadmin_config_file: /etc/phpMyAdmin/config.inc.php
+__phpmyadmin_secret_file: /etc/phpMyAdmin/.blowfish_secret
+__phpmyadmin_db_ca_path: /etc/phpMyAdmin/db-ca.crt
+__phpmyadmin_app_dir: /usr/share/phpMyAdmin
+__phpmyadmin_state_dir: /var/lib/phpMyAdmin
+__phpmyadmin_temp_dir: /var/lib/phpMyAdmin/temp
+
+# CodeReady Builder repository ids by distribution and release.
+__phpmyadmin_crb_repo:
+  RedHat: "codeready-builder-for-rhel-{{ ansible_facts['distribution_major_version'] }}-{{ ansible_facts['architecture'] }}-rpms"
+  default: "{{ 'powertools' if ansible_facts['distribution_major_version'] == '8' else 'crb' }}"
+
+__phpmyadmin_uses_tcp: >-
+  {{ phpmyadmin_servers | rejectattr('socket', 'defined')
+     | rejectattr('host', 'in', ['localhost']) | list | length > 0 }}

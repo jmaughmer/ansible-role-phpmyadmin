@@ -1,0 +1,70 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars:
+    base: https://127.0.0.1/phpmyadmin/
+  tasks:
+    - name: Plain HTTP redirects to HTTPS
+      ansible.builtin.uri:
+        url: http://127.0.0.1/phpmyadmin/
+        follow_redirects: none
+        status_code: 301
+
+    - name: Load the login page
+      ansible.builtin.uri:
+        url: "{{ base }}"
+        validate_certs: false
+        return_content: true
+      register: login_page
+
+    - name: Assert the login form is served
+      ansible.builtin.assert:
+        that:
+          - "'pma_username' in login_page.content"
+          - login_page.x_powered_by is not defined
+
+    - name: Log in
+      ansible.builtin.uri:
+        url: "{{ base }}index.php?route=/"
+        method: POST
+        validate_certs: false
+        follow_redirects: none
+        body_format: form-urlencoded
+        body:
+          route: /
+          token: "{{ login_page.content | regex_search('name=\"token\" value=\"([^\"]+)\"', '\\1') | first }}"
+          set_session: "{{ login_page.content | regex_search('name=\"set_session\" value=\"([^\"]+)\"', '\\1') | first }}"
+          pma_username: pmatest
+          pma_password: Molecule-Passw0rd!Pma
+          server: "1"
+        headers:
+          Cookie: "{{ login_page.cookies_string }}"
+        status_code: [200, 302]
+      register: login
+
+    - name: Assert phpMyAdmin issued a login cookie
+      ansible.builtin.assert:
+        that: "'pmaAuth-1' in login.cookies"
+        fail_msg: "{{ login.cookies }}"
+
+    - name: Setup and library directories are refused
+      ansible.builtin.uri:
+        url: "{{ base }}{{ item }}"
+        validate_certs: false
+        status_code: 403
+      loop: [setup/, libraries/, vendor/]
+
+    - name: Read the fapolicyd files
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /etc/fapolicyd/trust.d/phpmyadmin
+        - /etc/fapolicyd/rules.d/65-phpmyadmin.rules
+      register: fapolicyd
+
+    - name: Assert config.inc.php is trusted and the temp rule exists
+      ansible.builtin.assert:
+        that:
+          - "'/etc/phpMyAdmin/config.inc.php ' in (fapolicyd.results[0].content | b64decode)"
+          - "'dir=/var/lib/phpMyAdmin/temp/' in (fapolicyd.results[1].content | b64decode)"

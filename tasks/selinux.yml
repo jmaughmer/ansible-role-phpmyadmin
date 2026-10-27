@@ -1,0 +1,30 @@
+---
+- name: Install SELinux management tools
+  ansible.builtin.dnf:
+    name:
+      - policycoreutils-python-utils
+      - python3-libselinux
+      - python3-policycoreutils
+    state: present
+
+- name: Let phpMyAdmin write its temp, upload and save directories
+  community.general.sefcontext:
+    target: "{{ __phpmyadmin_state_dir }}/(temp|upload|save)(/.*)?"
+    setype: httpd_sys_rw_content_t
+    state: present
+
+- name: Restore file contexts
+  ansible.builtin.command: "restorecon -R -v {{ __phpmyadmin_state_dir }} {{ __phpmyadmin_config_dir }}"
+  register: __phpmyadmin_restorecon
+  changed_when: __phpmyadmin_restorecon.stdout | length > 0
+
+# Local servers are reached over the MariaDB socket, which httpd may use by
+# default; TCP servers need httpd_can_network_connect_db.
+- name: Set SELinux booleans
+  ansible.posix.seboolean:
+    name: "{{ item.key }}"
+    state: "{{ item.value | bool }}"
+    persistent: true
+  loop: >-
+    {{ (({'httpd_can_network_connect_db': true} if __phpmyadmin_uses_tcp | bool else {})
+        | combine(phpmyadmin_selinux_booleans)) | dict2items }}

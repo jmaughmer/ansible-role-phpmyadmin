@@ -1,0 +1,16 @@
+---
+- name: Reload httpd for phpMyAdmin
+  ansible.builtin.systemd_service:
+    name: httpd
+    state: reloaded
+
+- name: Reload fapolicyd rules
+  ansible.builtin.command: fagenrules --load
+  changed_when: true
+  # fapolicyd compiles rules.d on start, so there is nothing to do while stopped.
+  failed_when: false
+
+- name: Update fapolicyd trust
+  ansible.builtin.command: fapolicyd-cli --update
+  changed_when: true
+  failed_when: false

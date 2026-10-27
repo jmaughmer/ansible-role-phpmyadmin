@@ -1,0 +1,20 @@
+---
+- name: Install phpMyAdmin
+  ansible.builtin.dnf:
+    name: "{{ phpmyadmin_packages }}"
+    state: present
+
+- name: Gather package facts
+  ansible.builtin.package_facts:
+
+- name: Assert Apache and PHP-FPM are installed
+  ansible.builtin.assert:
+    that:
+      - "'httpd' in ansible_facts.packages"
+      - "'mod_ssl' in ansible_facts.packages"
+      - "'php-fpm' in ansible_facts.packages"
+    fail_msg: >-
+      phpMyAdmin needs Apache with mod_ssl and PHP-FPM. Run ansible-role-apache
+      with apache_php_enabled: true before this role.
+    quiet: true
+  when: not ansible_check_mode

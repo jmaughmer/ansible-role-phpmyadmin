@@ -1,0 +1,8 @@
+---
+- name: Prepare
+  hosts: all
+  tasks:
+    - name: Install fapolicyd (left stopped) so the role writes its trust file and rule
+      ansible.builtin.dnf:
+        name: fapolicyd
+        state: present

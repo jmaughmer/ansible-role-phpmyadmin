@@ -1,0 +1,32 @@
+---
+- name: Validate role variables
+  ansible.builtin.import_tasks: assert.yml
+  tags: [phpmyadmin, phpmyadmin_assert]
+
+- name: Configure package repositories
+  ansible.builtin.import_tasks: repo.yml
+  tags: [phpmyadmin, phpmyadmin_repo]
+
+- name: Install phpMyAdmin
+  ansible.builtin.import_tasks: install.yml
+  tags: [phpmyadmin, phpmyadmin_install]
+
+- name: Configure phpMyAdmin
+  ansible.builtin.import_tasks: config.yml
+  tags: [phpmyadmin, phpmyadmin_config]
+
+- name: Configure SELinux
+  ansible.builtin.import_tasks: selinux.yml
+  when:
+    - phpmyadmin_selinux_manage | bool
+    - ansible_facts['selinux']['status'] | default('disabled') == 'enabled'
+  tags: [phpmyadmin, phpmyadmin_security, phpmyadmin_selinux]
+
+- name: Configure fapolicyd
+  ansible.builtin.import_tasks: fapolicyd.yml
+  when: phpmyadmin_fapolicyd_manage | bool
+  tags: [phpmyadmin, phpmyadmin_security, phpmyadmin_fapolicyd]
+
+- name: Apply configuration changes
+  ansible.builtin.meta: flush_handlers
+  tags: [phpmyadmin]

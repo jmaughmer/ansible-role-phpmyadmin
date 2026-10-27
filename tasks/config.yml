@@ -1,0 +1,60 @@
+---
+- name: Generate the blowfish secret
+  # 16 random bytes as 32 hex characters, the length phpMyAdmin expects.
+  ansible.builtin.shell: "umask 0277 && openssl rand -hex 16 > {{ __phpmyadmin_secret_file }}"
+  args:
+    creates: "{{ __phpmyadmin_secret_file }}"
+  when: phpmyadmin_blowfish_secret | length == 0
+
+- name: Read the blowfish secret
+  ansible.builtin.slurp:
+    src: "{{ __phpmyadmin_secret_file }}"
+  register: __phpmyadmin_secret_read
+  when:
+    - phpmyadmin_blowfish_secret | length == 0
+    - not ansible_check_mode
+  no_log: true
+
+- name: Install the database CA certificate
+  ansible.builtin.copy:
+    dest: "{{ __phpmyadmin_db_ca_path }}"
+    content: "{{ phpmyadmin_db_ca_content if phpmyadmin_db_ca_content | length > 0 else omit }}"
+    src: "{{ phpmyadmin_db_ca_src if phpmyadmin_db_ca_content | length == 0 else omit }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: phpmyadmin_db_ca_content | length > 0 or phpmyadmin_db_ca_src | length > 0
+
+- name: Write config.inc.php
+  ansible.builtin.template:
+    src: config.inc.php.j2
+    dest: "{{ __phpmyadmin_config_file }}"
+    owner: root
+    group: apache
+    mode: "0640"
+  vars:
+    __phpmyadmin_secret: >-
+      {{ phpmyadmin_blowfish_secret if phpmyadmin_blowfish_secret | length > 0
+         else (__phpmyadmin_secret_read.content | default('') | b64decode | trim) }}
+  no_log: true
+
+- name: Write the Apache configuration for phpMyAdmin
+  ansible.builtin.template:
+    src: phpMyAdmin.conf.j2
+    dest: /etc/httpd/conf.d/phpMyAdmin.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload httpd for phpMyAdmin
+
+- name: Restrict phpMyAdmin state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: apache
+    group: apache
+    mode: "0750"
+  loop:
+    - "{{ __phpmyadmin_state_dir }}/temp"
+    - "{{ __phpmyadmin_state_dir }}/upload"
+    - "{{ __phpmyadmin_state_dir }}/save"
