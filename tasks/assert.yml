@@ -1,0 +1,35 @@
+---
+- name: Assert supported platform
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] == 'RedHat'
+      - ansible_facts['distribution_major_version'] in __phpmyadmin_supported_major_versions
+    fail_msg: >-
+      This role supports RHEL-compatible systems 8, 9 and 10, not
+      {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}.
+    quiet: true
+
+- name: Assert repository source
+  ansible.builtin.assert:
+    that:
+      - phpmyadmin_repo_source in __phpmyadmin_repo_sources
+      - phpmyadmin_repo_source != 'satellite' or phpmyadmin_satellite_repos | length > 0
+      - phpmyadmin_repo_source != 'custom' or phpmyadmin_custom_repos | length > 0
+    fail_msg: >-
+      phpmyadmin_repo_source must be one of {{ __phpmyadmin_repo_sources | join(', ') }}.
+      "satellite" needs phpmyadmin_satellite_repos and "custom" needs phpmyadmin_custom_repos.
+    quiet: true
+
+- name: Assert database servers
+  ansible.builtin.assert:
+    that:
+      - phpmyadmin_servers | length > 0
+      - phpmyadmin_servers | selectattr('host', 'undefined') | list | length == 0
+    fail_msg: phpmyadmin_servers needs at least one entry, each with a host.
+    quiet: true
+
+- name: Assert the blowfish secret length
+  ansible.builtin.assert:
+    that: phpmyadmin_blowfish_secret | length in [0, 32]
+    fail_msg: phpmyadmin_blowfish_secret must be exactly 32 characters (or empty to generate one).
+    quiet: true

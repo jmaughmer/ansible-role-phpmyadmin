@@ -1,0 +1,104 @@
+---
+# ---------------------------------------------------------------------------
+# Package repository
+# ---------------------------------------------------------------------------
+# phpMyAdmin is not in AppStream. Where the package comes from:
+#   epel      - install EPEL from the Fedora project (epel-release on
+#               AlmaLinux/Rocky, the epel-release RPM on RHEL)
+#   satellite - enable repositories by label with subscription-manager, for
+#               hosts registered to Red Hat Satellite or Katello (sync EPEL
+#               there as a custom product)
+#   custom    - write .repo files, e.g. for a Katello/Pulp published URL
+#   none      - repositories are already configured
+phpmyadmin_repo_source: epel
+
+# epel: also enable CodeReady Builder / CRB (PowerTools on EL8), which EPEL
+# packages may depend on.
+phpmyadmin_epel_enable_crb: true
+phpmyadmin_epel_gpg_key_url: "https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-{{ ansible_facts['distribution_major_version'] }}"
+phpmyadmin_epel_release_url: "https://dl.fedoraproject.org/pub/epel/epel-release-latest-{{ ansible_facts['distribution_major_version'] }}.noarch.rpm"
+
+# satellite: repository labels as "subscription-manager repos --list" shows
+# them, e.g. ["MyOrg_EPEL_EPEL_9_x86_64", "codeready-builder-for-rhel-9-x86_64-rpms"].
+phpmyadmin_satellite_repos: []
+
+# custom: arguments for ansible.builtin.yum_repository.
+# - name: katello-epel
+#   description: EPEL 9 from Katello
+#   baseurl: https://katello.example.com/pulp/content/MyOrg/Library/custom/EPEL/EPEL_9_x86_64/
+#   gpgkey: https://katello.example.com/pulp/content/MyOrg/Library/custom/EPEL/RPM-GPG-KEY-EPEL-9
+#   gpgcheck: true
+#   sslcacert: /etc/rhsm/ca/katello-server-ca.pem
+phpmyadmin_custom_repos: []
+
+phpmyadmin_packages: [phpMyAdmin]
+
+# ---------------------------------------------------------------------------
+# Database servers
+# ---------------------------------------------------------------------------
+# The default reaches a local MariaDB through its unix socket, so no TLS or
+# extra SELinux boolean is needed. For TCP servers set host and port; with
+# ssl the connection is encrypted and, with ssl_verify, the server
+# certificate is checked against ssl_ca.
+# - verbose: db01
+#   host: db01.corp.example.com
+#   port: 3306
+#   ssl: true
+#   ssl_ca: /etc/phpMyAdmin/db-ca.crt
+#   ssl_verify: true
+#   hide_db: "^(information_schema|performance_schema|mysql|sys)$"
+phpmyadmin_servers:
+  - verbose: "{{ ansible_facts['hostname'] }}"
+    host: localhost
+    socket: /var/lib/mysql/mysql.sock
+
+# CA certificate for TCP servers, written to /etc/phpMyAdmin/db-ca.crt.
+phpmyadmin_db_ca_content: ""
+phpmyadmin_db_ca_src: ""
+
+# ---------------------------------------------------------------------------
+# phpMyAdmin settings
+# ---------------------------------------------------------------------------
+# 32 characters for cookie encryption. Empty generates one on the host and
+# keeps it in /etc/phpMyAdmin/.blowfish_secret.
+phpmyadmin_blowfish_secret: ""
+# Log users out after this many idle seconds (the STIG asks for 15 minutes).
+phpmyadmin_login_cookie_validity: 900
+phpmyadmin_allow_root: false
+phpmyadmin_allow_no_password: false
+phpmyadmin_version_check: false
+phpmyadmin_show_server_info: false
+phpmyadmin_show_php_info: false
+phpmyadmin_send_error_reports: never
+phpmyadmin_default_lang: en
+# Extra scalar $cfg settings: { MaxNavigationItems: 100, ThemeDefault: pmahomme }
+phpmyadmin_extra_config: {}
+
+# ---------------------------------------------------------------------------
+# Apache
+# ---------------------------------------------------------------------------
+# Run ansible-role-apache first with apache_php_enabled: true. This role
+# replaces the package's /etc/httpd/conf.d/phpMyAdmin.conf.
+phpmyadmin_url_paths: [/phpmyadmin, /phpMyAdmin]
+# Client networks allowed to reach phpMyAdmin.
+phpmyadmin_allowed_networks: [127.0.0.1, "::1"]
+# Refuse requests that did not arrive over HTTPS.
+phpmyadmin_require_https: true
+
+# ---------------------------------------------------------------------------
+# SELinux
+# ---------------------------------------------------------------------------
+phpmyadmin_selinux_manage: true
+# Turned on automatically when a server in phpmyadmin_servers uses TCP.
+phpmyadmin_selinux_booleans: {}
+
+# ---------------------------------------------------------------------------
+# fapolicyd
+# ---------------------------------------------------------------------------
+# The edited config.inc.php no longer matches the RPM, so it gets its own
+# trust entry. phpMyAdmin also compiles templates to PHP files in its temp
+# directory at run time; fapolicyd's language rules block php-fpm from
+# opening those unless a rule allows that one directory.
+phpmyadmin_fapolicyd_manage: true
+phpmyadmin_fapolicyd_trust_file: phpmyadmin
+phpmyadmin_fapolicyd_allow_temp: true

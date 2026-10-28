@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+# Replaces the file shipped with the phpMyAdmin package.
+{% for path in phpmyadmin_url_paths %}
+Alias {{ path }} {{ __phpmyadmin_app_dir }}
+{% endfor %}
+
+<Directory {{ __phpmyadmin_app_dir }}/>
+    AddDefaultCharset UTF-8
+    Options None
+    AllowOverride None
+    <RequireAll>
+        Require ip {{ phpmyadmin_allowed_networks | join(' ') }}
+{% if phpmyadmin_require_https | bool %}
+        Require expr %{HTTPS} == 'on'
+{% endif %}
+    </RequireAll>
+</Directory>
+
+# Internal directories are never served.
+{% for dir in ['setup', 'libraries', 'templates', 'vendor', 'sql', 'src', 'tmp'] %}
+<Directory {{ __phpmyadmin_app_dir }}/{{ dir }}/>
+    Require all denied
+</Directory>
+{% endfor %}

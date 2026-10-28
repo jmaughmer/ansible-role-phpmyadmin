@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  role_name: phpmyadmin
+  namespace: jmaughmer
+  author: Justin Maughmer
+  description: >-
+    Install and harden phpMyAdmin behind Apache on RHEL 8, 9 and 10, from EPEL
+    or Satellite/Katello repositories, with SELinux and fapolicyd support
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["8", "9", "10"]
+  galaxy_tags: [phpmyadmin, mariadb, mysql, apache, web, selinux, fapolicyd, satellite]
+# Apache and PHP-FPM come from ansible-role-apache, which the playbook runs first.
+dependencies: []

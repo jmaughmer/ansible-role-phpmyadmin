@@ -1,0 +1,67 @@
+---
+- name: Check for fapolicyd
+  ansible.builtin.stat:
+    path: /usr/sbin/fapolicyd
+  register: __phpmyadmin_fapolicyd_bin
+
+- name: Configure fapolicyd for phpMyAdmin
+  when: __phpmyadmin_fapolicyd_bin.stat.exists
+  block:
+    # config.inc.php is a PHP file php-fpm opens; once edited it no longer
+    # matches the hash in the RPM database.
+    - name: Collect the checksum of config.inc.php
+      ansible.builtin.stat:
+        path: "{{ __phpmyadmin_config_file }}"
+        checksum_algorithm: sha256
+        get_checksum: true
+      register: __phpmyadmin_config_stat
+
+    - name: Write the fapolicyd trust file
+      ansible.builtin.copy:
+        dest: "/etc/fapolicyd/trust.d/{{ phpmyadmin_fapolicyd_trust_file }}"
+        content: |
+          # Managed by Ansible (ansible-role-phpmyadmin)
+          {{ __phpmyadmin_config_file }} {{ __phpmyadmin_config_stat.stat.size }} {{ __phpmyadmin_config_stat.stat.checksum }}
+        owner: root
+        group: fapolicyd
+        mode: "0644"
+      when: __phpmyadmin_config_stat.stat.exists
+      notify: Update fapolicyd trust
+
+    - name: Check for the fapolicyd rules.d directory
+      ansible.builtin.stat:
+        path: /etc/fapolicyd/rules.d
+      register: __phpmyadmin_rules_d
+
+    # Sorts before 70-trusted-lang.rules, which denies untrusted PHP files.
+    - name: Allow php-fpm to open compiled templates in the temp directory
+      ansible.builtin.copy:
+        dest: /etc/fapolicyd/rules.d/65-phpmyadmin.rules
+        content: |
+          # Managed by Ansible (ansible-role-phpmyadmin)
+          # phpMyAdmin compiles its Twig templates to PHP files here at run time.
+          allow perm=open exe=/usr/sbin/php-fpm : dir={{ __phpmyadmin_temp_dir }}/ ftype=text/x-php
+        owner: root
+        group: fapolicyd
+        mode: "0644"
+      when:
+        - phpmyadmin_fapolicyd_allow_temp | bool
+        - __phpmyadmin_rules_d.stat.exists
+      notify: Reload fapolicyd rules
+
+    - name: Remove the temp directory rule
+      ansible.builtin.file:
+        path: /etc/fapolicyd/rules.d/65-phpmyadmin.rules
+        state: absent
+      when: not phpmyadmin_fapolicyd_allow_temp | bool
+      notify: Reload fapolicyd rules
+
+    - name: Warn when fapolicyd has no rules.d
+      ansible.builtin.debug:
+        msg: >-
+          This fapolicyd has no /etc/fapolicyd/rules.d, so the rule for phpMyAdmin's temp
+          directory was not written. Add it to fapolicyd.rules by hand, before the
+          language rules: allow perm=open exe=/usr/sbin/php-fpm : dir={{ __phpmyadmin_temp_dir }}/ ftype=text/x-php
+      when:
+        - phpmyadmin_fapolicyd_allow_temp | bool
+        - not __phpmyadmin_rules_d.stat.exists

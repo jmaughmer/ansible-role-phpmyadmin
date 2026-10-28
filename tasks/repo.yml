@@ -1,0 +1,111 @@
+---
+# ---------------------------------------------------------------------------
+# EPEL straight from the Fedora project
+# ---------------------------------------------------------------------------
+- name: Enable EPEL
+  when: phpmyadmin_repo_source == 'epel'
+  block:
+    - name: Import the EPEL signing key
+      ansible.builtin.rpm_key:
+        key: "{{ phpmyadmin_epel_gpg_key_url }}"
+        state: present
+      when: ansible_facts['distribution'] == 'RedHat'
+
+    - name: Install epel-release on RHEL
+      ansible.builtin.dnf:
+        name: "{{ phpmyadmin_epel_release_url }}"
+        state: present
+      when: ansible_facts['distribution'] == 'RedHat'
+
+    # AlmaLinux, Rocky and Oracle ship epel-release (or an equivalent) in
+    # their own extras repositories.
+    - name: Install epel-release
+      ansible.builtin.dnf:
+        name: >-
+          {{ 'oracle-epel-release-el' ~ ansible_facts['distribution_major_version']
+             if ansible_facts['distribution'] == 'OracleLinux' else 'epel-release' }}
+        state: present
+      when: ansible_facts['distribution'] != 'RedHat'
+
+    - name: Enable CodeReady Builder on RHEL
+      community.general.rhsm_repository:
+        name: "{{ __phpmyadmin_crb_repo.RedHat }}"
+        state: enabled
+      when:
+        - phpmyadmin_epel_enable_crb | bool
+        - ansible_facts['distribution'] == 'RedHat'
+
+    - name: Install the dnf config-manager plugin
+      ansible.builtin.dnf:
+        name: dnf-plugins-core
+        state: present
+      when:
+        - phpmyadmin_epel_enable_crb | bool
+        - ansible_facts['distribution'] != 'RedHat'
+
+    - name: List enabled repositories
+      ansible.builtin.command: dnf -q repolist --enabled
+      register: __phpmyadmin_repolist
+      changed_when: false
+      check_mode: false
+      when:
+        - phpmyadmin_epel_enable_crb | bool
+        - ansible_facts['distribution'] != 'RedHat'
+
+    - name: Enable CRB / PowerTools
+      ansible.builtin.command: "dnf config-manager --set-enabled {{ __phpmyadmin_crb_repo.default }}"
+      when:
+        - phpmyadmin_epel_enable_crb | bool
+        - ansible_facts['distribution'] != 'RedHat'
+        - __phpmyadmin_crb_repo.default not in (__phpmyadmin_repolist.stdout_lines | map('split') | map('first') | list)
+      changed_when: true
+
+# ---------------------------------------------------------------------------
+# Red Hat Satellite / Katello content, enabled by repository label
+# ---------------------------------------------------------------------------
+- name: Enable Satellite or Katello repositories
+  when: phpmyadmin_repo_source == 'satellite'
+  block:
+    - name: Check the host is registered
+      ansible.builtin.command: subscription-manager identity
+      register: __phpmyadmin_rhsm_identity
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Assert the host is registered
+      ansible.builtin.assert:
+        that: __phpmyadmin_rhsm_identity.rc == 0
+        fail_msg: >-
+          phpmyadmin_repo_source is "satellite" but subscription-manager says this host is not
+          registered. Register it to Satellite/Katello (activation key) first.
+        quiet: true
+
+    - name: Enable the repositories
+      community.general.rhsm_repository:
+        name: "{{ phpmyadmin_satellite_repos }}"
+        state: enabled
+
+# ---------------------------------------------------------------------------
+# Repository definitions you supply (a Katello/Pulp published URL, a mirror)
+# ---------------------------------------------------------------------------
+- name: Write custom repository definitions
+  ansible.builtin.yum_repository:
+    name: "{{ item.name }}"
+    description: "{{ item.description | default(item.name) }}"
+    baseurl: "{{ item.baseurl | default(omit) }}"
+    metalink: "{{ item.metalink | default(omit) }}"
+    mirrorlist: "{{ item.mirrorlist | default(omit) }}"
+    gpgcheck: "{{ item.gpgcheck | default(true) }}"
+    gpgkey: "{{ item.gpgkey | default(omit) }}"
+    sslcacert: "{{ item.sslcacert | default(omit) }}"
+    sslclientcert: "{{ item.sslclientcert | default(omit) }}"
+    sslclientkey: "{{ item.sslclientkey | default(omit) }}"
+    sslverify: "{{ item.sslverify | default(omit) }}"
+    module_hotfixes: "{{ item.module_hotfixes | default(omit) }}"
+    enabled: "{{ item.enabled | default(true) }}"
+    state: "{{ item.state | default('present') }}"
+  loop: "{{ phpmyadmin_custom_repos }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: phpmyadmin_repo_source == 'custom'
