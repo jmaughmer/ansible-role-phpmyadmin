@@ -1,6 +1,6 @@
 # ansible-role-phpmyadmin
 
-Ansible role that installs and hardens phpMyAdmin behind Apache on RHEL 8, 9 and 10 (and compatible: AlmaLinux, Rocky, Oracle Linux).
+Ansible role that installs and hardens phpMyAdmin behind Apache on RHEL 9 and 10 (and compatible: AlmaLinux, Rocky, Oracle Linux). EL8 isn't supported, because EPEL 8 has no phpMyAdmin package.
 
 Features:
 
@@ -9,13 +9,13 @@ Features:
 - Hardened settings: cookie authentication with a 15-minute idle logout, no root login, no empty passwords, no arbitrary servers, no version check, server or PHP info, or error reports, and internal directories never served.
 - Access only over HTTPS and only from listed networks.
 - SELinux labels for phpMyAdmin's writable directories and the database boolean when needed, plus fapolicyd trust for the edited `config.inc.php` and a scoped rule for compiled templates.
-- Molecule tests with podman on EL8, EL9 and EL10, together with the MariaDB and Apache roles, including a real login.
+- Molecule tests with podman on EL9 and EL10, together with the MariaDB and Apache roles, including a real login.
 
 ## Requirements
 
 - [ansible-role-apache](https://github.com/jmaughmer/ansible-role-apache) runs first in the same play with `apache_php_enabled: true`, which provides httpd, mod_ssl, TLS and PHP-FPM from AppStream. The role checks for them.
-- A database server, typically from [ansible-role-mariadb](https://github.com/jmaughmer/ansible-role-mariadb).
-- Ansible core 2.15 or newer (2.16 or older for RHEL 8 targets), and the collections in `requirements.yml`.
+- A database server, typically from [ansible-role-mariadb](https://github.com/jmaughmer/ansible-role-mariadb). For a local server, set `mariadb_datadir_mode: "0751"` on that role (see below).
+- Ansible core 2.15 or newer, and the collections in `requirements.yml`.
 
 ## Quick start
 
@@ -24,6 +24,8 @@ Features:
   become: true
   roles:
     - role: ansible-role-mariadb
+      vars:
+        mariadb_datadir_mode: "0751"
     - role: ansible-role-apache
       vars:
         apache_php_enabled: true
@@ -35,13 +37,15 @@ Features:
 
 phpMyAdmin is then at `https://<host>/phpmyadmin/`. Log in with a MariaDB account. Root cannot log in, since `root@localhost` uses `unix_socket` authentication and phpMyAdmin is not allowed to use it anyway.
 
+`mariadb_datadir_mode: "0751"` is needed because php-fpm runs as `apache` and the MariaDB socket is inside the data directory. With the MariaDB role's default of `0750`, every login would fail with `Permission denied`, so this role checks that `apache` can enter the socket's directory and stops with a message if not. `0751` lets other users reach the socket but not list the directory.
+
 ## Package repository
 
 phpMyAdmin is not in AppStream on any EL release, so `phpmyadmin_repo_source` picks where it comes from.
 
 | Source | What the role does |
 |---|---|
-| `epel` (default) | On RHEL: imports the EPEL key and installs `epel-release` from the Fedora project, then enables CodeReady Builder with subscription-manager. On AlmaLinux/Rocky: installs `epel-release` from extras and enables CRB (PowerTools on EL8). Oracle Linux uses `oracle-epel-release-elN`. Turn off CRB with `phpmyadmin_epel_enable_crb: false`. |
+| `epel` (default) | On RHEL: imports the EPEL key and installs `epel-release` from the Fedora project, then enables CodeReady Builder with subscription-manager. On AlmaLinux/Rocky: installs `epel-release` from extras and enables CRB. Oracle Linux uses `oracle-epel-release-elN`. Turn off CRB with `phpmyadmin_epel_enable_crb: false`. |
 | `satellite` | Checks the host is registered, then enables `phpmyadmin_satellite_repos` by label with subscription-manager. Works for Red Hat Satellite and Katello (AlmaLinux and Rocky register to Katello with subscription-manager too). |
 | `custom` | Writes `.repo` files from `phpmyadmin_custom_repos` (any `yum_repository` arguments), for example a Katello/Pulp published URL or an internal mirror. |
 | `none` | Leaves repositories alone, for hosts where an activation key or another role already set them up. |
@@ -133,7 +137,7 @@ Tags: `phpmyadmin_repo`, `phpmyadmin_install`, `phpmyadmin_config`, `phpmyadmin_
 Tests run locally with podman; there is no CI. On the AlmaLinux 10 WSL distribution (or any EL10 host):
 
 ```bash
-scripts/test.sh                                              # lint, default (EL9 + EL10), el8
+scripts/test.sh                                              # lint, default (EL9 + EL10)
 PHPMYADMIN_DEPS_REF=some-branch scripts/test.sh default      # test against role branches
 ```
 

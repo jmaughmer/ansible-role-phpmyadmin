@@ -1,0 +1,58 @@
+---
+# One login through the form, like a browser: read the token from the form, post
+# the credentials, then load the page again with the cookies that came back.
+- name: Start with an empty cookie jar
+  ansible.builtin.file:
+    path: "{{ attempt.jar }}"
+    state: absent
+
+- name: Load the login form  # noqa: command-instead-of-module
+  ansible.builtin.command:
+    argv: [curl, -sSk, -c, "{{ attempt.jar }}", -b, "{{ attempt.jar }}", "{{ base }}index.php?route=/"]
+  register: login_form
+  changed_when: false
+
+- name: Post the credentials  # noqa: command-instead-of-module
+  ansible.builtin.command:
+    argv:
+      - curl
+      - -sSk
+      - -c
+      - "{{ attempt.jar }}"
+      - -b
+      - "{{ attempt.jar }}"
+      - -o
+      - /dev/null
+      - -w
+      - "%{http_code}"
+      - --data-urlencode
+      - route=/
+      - --data-urlencode
+      - "token={{ login_form.stdout | regex_search('name=\"token\" value=\"([^\"]+)\"', '\\1') | first }}"
+      - --data-urlencode
+      - "set_session={{ login_form.stdout | regex_search('name=\"set_session\" value=\"([^\"]+)\"', '\\1') | first }}"
+      - --data-urlencode
+      - pma_username=pmatest
+      - --data-urlencode
+      - "pma_password={{ attempt.password }}"
+      - --data-urlencode
+      - server=1
+      - "{{ base }}index.php?route=/"
+  register: login_post
+  changed_when: false
+
+- name: Load the page again  # noqa: command-instead-of-module
+  ansible.builtin.command:
+    argv: [curl, -sSk, -c, "{{ attempt.jar }}", -b, "{{ attempt.jar }}", "{{ base }}index.php?route=/"]
+  register: login_after
+  changed_when: false
+
+- name: Assert the login outcome
+  ansible.builtin.assert:
+    that:
+      - login_post.stdout == attempt.post_status
+      - ('pma_username' in login_after.stdout) == attempt.form_back
+    fail_msg: >-
+      Expected HTTP {{ attempt.post_status }} from the login POST and the login form
+      {{ 'back' if attempt.form_back else 'gone' }}; got HTTP {{ login_post.stdout }} and the form
+      {{ 'back' if 'pma_username' in login_after.stdout else 'gone' }}.

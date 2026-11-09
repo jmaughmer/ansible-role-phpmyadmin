@@ -24,29 +24,17 @@
           - "'pma_username' in login_page.content"
           - login_page.x_powered_by is not defined
 
-    - name: Log in
-      ansible.builtin.uri:
-        url: "{{ base }}index.php?route=/"
-        method: POST
-        validate_certs: false
-        follow_redirects: none
-        body_format: form-urlencoded
-        body:
-          route: /
-          token: "{{ login_page.content | regex_search('name=\"token\" value=\"([^\"]+)\"', '\\1') | first }}"
-          set_session: "{{ login_page.content | regex_search('name=\"set_session\" value=\"([^\"]+)\"', '\\1') | first }}"
-          pma_username: pmatest
-          pma_password: Molecule-Passw0rd!Pma
-          server: "1"
-        headers:
-          Cookie: "{{ login_page.cookies_string }}"
-        status_code: [200, 302]
-      register: login
-
-    - name: Assert phpMyAdmin issued a login cookie
-      ansible.builtin.assert:
-        that: "'pmaAuth-1' in login.cookies"
-        fail_msg: "{{ login.cookies }}"
+    # phpMyAdmin sets its auth cookie on failed logins too, so a wrong password
+    # goes first to prove the check can tell them apart. One miss stays under the
+    # MariaDB role's lockout, and the good login resets the count.
+    - name: Log in with a wrong password, then the right one
+      ansible.builtin.include_tasks: tasks/login.yml
+      loop:
+        - { jar: /tmp/pma-wrong.jar, password: not-the-password, post_status: "200", form_back: true }
+        - { jar: /tmp/pma-right.jar, password: Molecule-Passw0rd!Pma, post_status: "302", form_back: false }
+      loop_control:
+        loop_var: attempt
+        label: "{{ attempt.jar }}"
 
     - name: Setup and library directories are refused
       ansible.builtin.uri:

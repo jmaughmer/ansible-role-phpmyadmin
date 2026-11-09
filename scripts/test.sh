@@ -9,14 +9,13 @@
 # checkouts next to this repository are used when present; otherwise they are
 # cloned into .cache/test/roles at PHPMYADMIN_DEPS_REF (default: main).
 #
-# Usage: scripts/test.sh [lint|default|el8|all ...]   (default: all)
+# Usage: scripts/test.sh [lint|default|all ...]   (default: all)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROLE_NAME="$(basename "$ROOT")"
 CACHE="${PHPMYADMIN_TEST_CACHE:-$ROOT/.cache/test}"
-VENV="$CACHE/venv"            # current ansible-core: lint, EL9/EL10, HA
-VENV_EL8="$CACHE/venv-el8"    # ansible-core 2.16: EL8 targets (Python 3.6 dnf)
+VENV="$CACHE/venv"            # current ansible-core: lint, EL9/EL10
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 die() { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -87,25 +86,19 @@ run_scenario() { # <venv> <scenario>
 main() {
   local targets=("$@")
   ((${#targets[@]})) || targets=(all)
-  [[ " ${targets[*]} " == *" all "* ]] && targets=(lint default el8)
+  [[ " ${targets[*]} " == *" all "* ]] && targets=(lint default)
 
   check_host
   make_venv "$VENV" "ansible-core ansible-lint yamllint" -r "$ROOT/requirements.yml"
-  if [[ " ${targets[*]} " == *" el8 "* ]]; then
-    make_venv "$VENV_EL8" "ansible-core>=2.16,<2.17" \
-      "ansible.posix:>=1.5.0,<2.0.0" "community.general:>=8.0.0,<11.0.0" "containers.podman:>=1.10.0,<1.17.0" \
-      "community.mysql:>=3.8.0,<4.0.0" "community.crypto:>=2.15.0,<3.0.0"
-  fi
 
-  [[ " ${targets[*]} " == *" default "* || " ${targets[*]} " == *" el8 "* ]] && fetch_deps
+  [[ " ${targets[*]} " == *" default "* ]] && fetch_deps
 
   local failed=()
   for t in "${targets[@]}"; do
     case "$t" in
       lint) run_lint || failed+=("$t") ;;
       default) run_scenario "$VENV" "$t" || failed+=("$t") ;;
-      el8) run_scenario "$VENV_EL8" el8 || failed+=("$t") ;;
-      *) die "unknown target: $t (expected lint, default, el8 or all)" ;;
+      *) die "unknown target: $t (expected lint, default or all)" ;;
     esac
   done
 

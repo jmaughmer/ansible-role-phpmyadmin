@@ -52,7 +52,7 @@
         - phpmyadmin_epel_enable_crb | bool
         - ansible_facts['distribution'] != 'RedHat'
 
-    - name: Enable CRB / PowerTools
+    - name: Enable CRB
       ansible.builtin.command: "dnf config-manager --set-enabled {{ __phpmyadmin_crb_repo.default }}"
       when:
         - phpmyadmin_epel_enable_crb | bool

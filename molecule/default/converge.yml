@@ -2,6 +2,8 @@
 - name: Converge
   hosts: all
   vars:
+    # php-fpm runs as apache and reaches the socket inside the data directory.
+    mariadb_datadir_mode: "0751"
     mariadb_users:
       - name: pmatest
         host: localhost
