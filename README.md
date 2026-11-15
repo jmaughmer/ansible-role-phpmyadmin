@@ -9,7 +9,7 @@ Features:
 - Hardened settings: cookie authentication with a 15-minute idle logout, no root login, no empty passwords, no arbitrary servers, no version check, server or PHP info, or error reports, and internal directories never served.
 - Access only over HTTPS and only from listed networks.
 - SELinux labels for phpMyAdmin's writable directories and the database boolean when needed, plus fapolicyd trust for the edited `config.inc.php` and a scoped rule for compiled templates.
-- Molecule tests with podman on EL9 and EL10, together with the MariaDB and Apache roles, including a real login.
+- Molecule tests on the Proxmox test lab's VMs (EL9 and EL10, SELinux enforcing), together with the MariaDB and Apache roles, including a real login.
 
 ## Requirements
 
@@ -134,14 +134,45 @@ Tags: `phpmyadmin_repo`, `phpmyadmin_install`, `phpmyadmin_config`, `phpmyadmin_
 
 ## Testing
 
-Tests run locally with podman; there is no CI. On the AlmaLinux 10 WSL distribution (or any EL10 host):
+Tests run on the Proxmox test lab. `molecule test` converges two real KVM VMs cloned from the
+lab's fleet onto its isolated labnet network — EL9 and EL10 side by side, SELinux enforcing and
+firewalld running — applying the MariaDB and Apache roles alongside phpMyAdmin, exactly as a
+production deployment does, so the SELinux, firewalld and fapolicyd paths run for real. After
+idempotence, `verify.yml` checks the deployment end to end, including a real login through the
+web UI. The sequence is destroy → syntax → create → prepare → converge → idempotence → verify →
+destroy.
+
+Tests run on the lab's molecule control machine: `molecule`, `molecule-proxmox` and the role's
+collections are preinstalled there, as are the `ansible-role-mariadb` and `ansible-role-apache`
+sibling checkouts the converge play includes; the driver's connection secrets and SSH key live
+only in the control machine's own config files. Nothing lab-specific is in this repo beyond the
+fleet template names and the default VMID band (9250–9251); hosts, tokens and subnets never
+leave the control machine. The Test Lab project's `molecule-labnet/` directory documents the lab
+itself. `LAB_TEMPLATE_EL9`/`LAB_TEMPLATE_EL10` pick each box's template (`template-alma8`,
+`template-alma9` or `template-alma10`):
 
 ```bash
-scripts/test.sh                                              # lint, default (EL9 + EL10)
-PHPMYADMIN_DEPS_REF=some-branch scripts/test.sh default      # test against role branches
+molecule test                                   # EL9 + EL10
+LAB_TEMPLATE_EL9=template-alma8 molecule test   # exercise the EL8 interpreter path too
 ```
 
-The scenarios also run ansible-role-mariadb and ansible-role-apache. If those repositories are checked out next to this one, they are used as they are. Otherwise the script clones them into `.cache/test/roles` at `PHPMYADMIN_DEPS_REF` (default `main`). The repository directory must be named `ansible-role-phpmyadmin`.
+The VMIDs come from `LAB_VMID_0/1` and default to the pinned 9250–9251 band, so a plain
+`molecule test` means one lab run of this repo at a time. For several runs of this repo at once,
+use the lab's `mlab` wrapper, which claims a free VMID band (and an isolated ephemeral
+directory) per run:
+
+```bash
+/root/labnet/mlab test -s default               # parallel-safe run on the control machine
+```
+
+Lint with `yamllint .` and `ansible-lint` (configured by [`.yamllint`](.yamllint) and
+[`.ansible-lint`](.ansible-lint)). There is no CI; run the lint and Molecule from the control
+machine.
+
+Not covered by the scenario: testing the dependent roles from branches (the removed
+`PHPMYADMIN_DEPS_REF` machinery); fapolicyd enforcement (the scenario installs fapolicyd stopped,
+to exercise the trust file and rule, but never starts it); and FIPS mode, which needs a host with
+FIPS enabled.
 
 ## License
 
